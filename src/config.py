@@ -39,3 +39,10 @@ class BaseTransformerConfig:
     # Inference parameters
     INFERENCE_TEMPERATURE = 1.0 # Controls randomness of generation (1.0 = normal, <1.0 = more deterministic, >1.0 = more random)
     INFERENCE_MAX_LEN = 1024 # Max length for generated sequence during inference
+
+    VOCAB_SIZE = 512  # or whatever your vocabulary size is (notes, tokens, etc.)
+    BLOCK_SIZE = 512  # max sequence length
+    N_EMBD = 512      # embedding dimension
+    DROPOUT = 0.1
+    NUM_LAYERS = 8       # number of encoder/decoder layers
+    BIAS = True 

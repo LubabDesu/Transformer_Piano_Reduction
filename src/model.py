@@ -43,6 +43,7 @@ class PositionalEncoding(nn.Module) :
 @dataclass
 class PianoReductionTransformerConfig(BaseTransformerConfig) :
     pass
+
 class PianoReductionTransformer(nn.Module) :
     '''Defines the main Piano Reduction Transformer class'''
     def __init__(self, config : PianoReductionTransformerConfig, src_vocab_size: int, tgt_vocab_size: int) :
@@ -59,6 +60,20 @@ class PianoReductionTransformer(nn.Module) :
         self.positional_encodings = PositionalEncoding(config.MODEL_DIM, 0.5, config.MAX_SEQUENCE_LENGTH)
         self.dropout = nn.Dropout(config.DROPOUT_RATE)
 
+        # The encoder part.
+        self.encoder = nn.ModuleDict(dict(
+            wte = nn.Embedding(config.VOCAB_SIZE, config.N_EMBD),
+            wpe = nn.Embedding(config.BLOCK_SIZE, config.N_EMBD),
+            drop = nn.Dropout(config.DROPOUT),
+        ))
+
+        # The decoder part.
+        self.decoder = nn.ModuleDict(dict(
+            wte = nn.Embedding(config.VOCAB_SIZE, config.N_EMBD),
+            wpe = nn.Embedding(config.BLOCK_SIZE, config.N_EMBD),
+            drop = nn.Dropout(config.DROPOUT),
+        ))
+
         self.transformer = nn.Transformer(
             d_model=config.MODEL_DIM,
             nhead=config.NUM_HEADS,
@@ -69,13 +84,41 @@ class PianoReductionTransformer(nn.Module) :
             #batch_first = True
         )
 
+        self.onset_head = nn.Linear(config.MODEL_DIM, config.VOCAB_SIZE)
+        self.offset_head = nn.Linear(config.MODEL_DIM, config.VOCAB_SIZE)
+        self.frame_head = nn.Linear(config.MODEL_DIM, config.VOCAB_SIZE)
+        self.velo_head = nn.Linear(config.MODEL_DIM, config.VOCAB_SIZE)
+
     def forward(self, encoder_ids, decoder_ids, target_ids=None, padding_mask=None):
         device = encoder_ids.device
         b, t = encoder_ids.size()
         pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
 
+        #Embed inputs
         tok_emb_encoder = self.encoder_embedding(encoder_ids)
-        pos_emb_encoder = self.encoder_embedding(encoder_ids)
+        tok_emb_encoder += self.positional_encodings(tok_emb_encoder)
+        tok_emb_encoder = self.dropout(tok_emb_encoder)
+
+
+        pos_emb_decoder = self.decoder_embedding(decoder_ids)
+        pos_emb_decoder += self.positional_encodings(pos_emb_decoder)
+        pos_emb_decoder = self.dropout(pos_emb_decoder)
+
+        tgt_seq_len = pos_emb_decoder.size(1)
+        tgt_mask = self.transformer.generate_square_subsequent_mask(tgt_seq_len).to(device)
+
+        x = self.transformer(src=tok_emb_encoder,
+                              tgt=pos_emb_decoder,
+                              tgt_mask=tgt_mask)
+
+        return {
+            'onset': self.onset_head(x),
+            'frame': self.frame_head(x),
+            'offset': self.offset_head(x),
+            'velocity': self.velo_head(x)
+        }
+
+    
 
 
 
