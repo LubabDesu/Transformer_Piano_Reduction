@@ -4,9 +4,8 @@ import transformers
 import math
 import sys
 from dataclasses import dataclass
-
 from config import BaseTransformerConfig
-#hi hello test
+
 class PositionalEncoding(nn.Module) :
     """
     Applies sinusoidal positional encoding to the input embeddings.
@@ -29,14 +28,8 @@ class PositionalEncoding(nn.Module) :
         self.register_buffer("pe", pe)
 
 
-        print(f"DEBUG: PositionalEncoding __init__ finished. Type of self.pe: {type(self.pe)}")
-        print(f"DEBUG: PositionalEncoding __init__ finished. Shape of self.pe: {self.pe.shape}")
-
     def forward(self, x : torch.Tensor):
 
-        print(f"DEBUG: PositionalEncoding forward started. Type of self.pe: {type(self.pe)}")
-        print(f"DEBUG: PositionalEncoding forward started. Shape of input x: {x.shape}")
-        print(f"DEBUG: PositionalEncoding forward started. Expected slice for self.pe: {self.pe.shape[0]}, {x.size(1)}, {self.pe.shape[2]}")
         x = x + self.pe[:, : x.size(1)].requires_grad_(False)
         return self.dropout(x)
 
@@ -46,34 +39,10 @@ class PianoReductionTransformerConfig(BaseTransformerConfig) :
 
 class PianoReductionTransformer(nn.Module) :
     '''Defines the main Piano Reduction Transformer class'''
-    def __init__(self, config : PianoReductionTransformerConfig, src_vocab_size: int, tgt_vocab_size: int) :
+    def __init__(self, config, num_pitches):
         super().__init__()
-
-        #Store config
-        self.config = config
-
-        #Input embeddings 
-        self.encoder_embedding = nn.Embedding(src_vocab_size, config.MODEL_DIM)
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size, config.MODEL_DIM)
-
-        #Positional Encoding Layer
-        self.positional_encodings = PositionalEncoding(config.MODEL_DIM, 0.5, config.MAX_SEQUENCE_LENGTH)
-        self.dropout = nn.Dropout(config.DROPOUT_RATE)
-
-        # The encoder part.
-        self.encoder = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.VOCAB_SIZE, config.N_EMBD),
-            wpe = nn.Embedding(config.BLOCK_SIZE, config.N_EMBD),
-            drop = nn.Dropout(config.DROPOUT),
-        ))
-
-        # The decoder part.
-        self.decoder = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.VOCAB_SIZE, config.N_EMBD),
-            wpe = nn.Embedding(config.BLOCK_SIZE, config.N_EMBD),
-            drop = nn.Dropout(config.DROPOUT),
-        ))
-
+        self.input_proj  = nn.Linear(num_pitches, config.MODEL_DIM)
+        self.pos_enc     = PositionalEncoding(config.MODEL_DIM, config.DROPOUT_RATE, config.MAX_SEQUENCE_LENGTH)
         self.transformer = nn.Transformer(
             d_model=config.MODEL_DIM,
             nhead=config.NUM_HEADS,
@@ -81,52 +50,45 @@ class PianoReductionTransformer(nn.Module) :
             num_decoder_layers=config.NUM_DECODER_LAYERS,
             dim_feedforward=config.FF_DIM,
             dropout=config.DROPOUT_RATE,
-            #batch_first = True
+            batch_first=True
         )
+        self.onset_proj = nn.Linear(config.MODEL_DIM, num_pitches)
+        self.offset_proj = nn.Linear(config.MODEL_DIM, num_pitches)
+        self.frame_proj = nn.Linear(config.MODEL_DIM, num_pitches)
 
-        self.onset_head = nn.Linear(config.MODEL_DIM, config.VOCAB_SIZE)
-        self.offset_head = nn.Linear(config.MODEL_DIM, config.VOCAB_SIZE)
-        self.frame_head = nn.Linear(config.MODEL_DIM, config.VOCAB_SIZE)
-        self.velo_head = nn.Linear(config.MODEL_DIM, config.VOCAB_SIZE)
+    def forward(self, x):
+        
+        x = x.permute(0, 2, 1)
+        # Now x is [Batch, Time, Pitches], e.g., [16, 512, 128]
 
-    def forward(self, encoder_ids, decoder_ids, target_ids=None, padding_mask=None):
-        device = encoder_ids.device
-        b, t = encoder_ids.size()
-        pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
+        x = self.input_proj(x)
+        # Now x is [Batch, Time, d_model], e.g., [16, 512, 512]
 
-        #Embed inputs
-        tok_emb_encoder = self.encoder_embedding(encoder_ids)
-        tok_emb_encoder += self.positional_encodings(tok_emb_encoder)
-        tok_emb_encoder = self.dropout(tok_emb_encoder)
+        x = self.pos_enc(x)
+        x = self.transformer(x, x)
+        # The transformer output x is the model's "understanding" of the music
+        # Shape is still [Batch, Time, d_model]
+        
+# # For sigmoid, normal BCE Loss
+#         # Pass the transformer's output to each head to get separate predictions
+#         onset_pred = torch.sigmoid(self.onset_proj(x))
+#         offset_pred = torch.sigmoid(self.offset_proj(x))
+#         frame_pred = torch.sigmoid(self.frame_proj(x))
+#         # Each prediction now has the shape [Batch, Time, Pitches]
 
+#         # Return a dictionary that the loss function expects
+#         return {
+#             'onset': onset_pred,
+#             'offset': offset_pred,
+#             'frame': frame_pred
+#         }
 
-        pos_emb_decoder = self.decoder_embedding(decoder_ids)
-        pos_emb_decoder += self.positional_encodings(pos_emb_decoder)
-        pos_emb_decoder = self.dropout(pos_emb_decoder)
-
-        tgt_seq_len = pos_emb_decoder.size(1)
-        tgt_mask = self.transformer.generate_square_subsequent_mask(tgt_seq_len).to(device)
-
-        x = self.transformer(src=tok_emb_encoder,
-                              tgt=pos_emb_decoder,
-                              tgt_mask=tgt_mask)
-
-        return {
-            'onset': self.onset_head(x),
-            'frame': self.frame_head(x),
-            'offset': self.offset_head(x),
-            'velocity': self.velo_head(x)
-        }
-
+#BCE With Logits loss 
+        onset_logits  = self.onset_proj(x)   # [B, T, P]
+        offset_logits = self.offset_proj(x)
+        frame_logits  = self.frame_proj(x)
     
-
-
-
-
-
-
-
-
+        return {'onset': onset_logits, 'offset': offset_logits, 'frame': frame_logits}
 
 
 def in_venv():
