@@ -1,6 +1,23 @@
-# Piano Reduction using Transformers
-This project investigates using transformer models to perform piano reduction. The goal is to automatically convert multi-instrumental music into a simplified version playable on a single piano.
+# 🎹 Piano Reduction with Transformers
 
-Our approach takes orchestral pieces, transforms them into piano roll format, and feeds them into a transformer network. The model learns to generate a piano-playable reduction, also in piano roll format, by mapping the complex orchestral input to a simpler piano output.
+This project investigates whether Transformer-based models can automatically reduce full orchestral scores into playable piano arrangements. While the models did not generate plausible reductions, the process offered valuable lessons about the challenges of applying sequence models to symbolic music.
 
-We're currently using the onsets and frames loss function to train the model, which helps it accurately predict note beginnings and durations. The entire system is built with PyTorch, leveraging a dataset of aligned orchestral and piano reduction MIDI file pairs.
+## ✨ Overview
+  •	Goal: Translate dense, multi-instrument orchestral input into stylistically faithful piano reductions.\
+	•	Approach: Train a Transformer on aligned orchestral–piano MIDI pairs (LOP dataset).\
+	•	Outcome: Models converged poorly, often producing sparse or incoherent outputs, highlighting dataset and architectural limitations.
+
+## ⚙️ Technical Highlights
+  •	Built with PyTorch and Transformers for sequence modeling.\
+	•	Implemented positional encoding + multi-head self-attention for long-range structure.\
+	•	Applied loss masking and negative subsampling to address sparsity.
+
+## 📚 Lessons Learned
+  •	Data representation matters: Piano reductions require structure (melody, harmony, voice distribution) that tokenized sequences struggled to capture.\
+	•	Model limitations: Pure Transformers without hierarchical context often collapse to trivial outputs in highly sparse domains.\
+	•	Evaluation gap: Note-level metrics (precision/recall/F1) did not capture musical plausibility, suggesting a need for human-in-the-loop or music-theoretic evaluation.
+
+## 🚀 Future Directions
+  •	Explore hierarchical VAEs (e.g., PianoTree-VAE) to model structured latent representations.\
+	•	Incorporate music-theoretic priors (e.g., pitch ranges, chordal grouping).\
+	•	Extend to multimodal inputs (audio + score) for richer grounding.
