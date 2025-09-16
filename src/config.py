@@ -1,4 +1,3 @@
-# config.py
 from dataclasses import dataclass
 @dataclass
 class BaseTransformerConfig:
@@ -20,12 +19,12 @@ class BaseTransformerConfig:
     UNK_TOKEN = '<unk>' # Unknown token
 
     # Model Hyperparameters
-    MODEL_DIM = 512       # Embedding dimension for all transformer layers
+    MODEL_DIM = 512      # Embedding dimension for all transformer layers
     NUM_HEADS = 8         # Number of attention heads
     NUM_ENCODER_LAYERS = 6
     NUM_DECODER_LAYERS = 6
     FF_DIM = MODEL_DIM * 4 # Dimension of the feed-forward network in each transformer layer
-    DROPOUT_RATE = 0.1
+    DROPOUT_RATE = 0.02
 
     # Training parameters
     LEARNING_RATE = 0.0001
